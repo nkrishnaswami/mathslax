@@ -8,6 +8,8 @@ var config = require('./config.js');
 var SERVER = process.env.SERVER || config.server || '127.0.0.1';
 var PORT = process.env.PORT || config.port || '8080';
 
+console.log("Starting MathSlax instance on " + SERVER + ":" + PORT.toString());
+
 // Install the routes.
 var router = Express.Router();
 router.get('/', function(req, res) {
@@ -33,13 +35,23 @@ router.post('/typeset', function(req, res) {
   var promiseSuccess = function(mathObjects) {
     var locals = {'mathObjects': mathObjects,
                   'serverAddress': util.format('http://%s:%s/', SERVER, PORT)};
-    var htmlResult = Jade.renderFile('./views/slack-response.jade', locals);
-    res.json({'text' : htmlResult});
+    var pngResult = Jade.renderFile('./views/slack-response.jade', locals);
+    res.json({'text' : pngResult});
     res.end();
   };
-  var promiseError = function(error) {
+  var promiseError = function(mathObject) {
     console.log('Error in typesetting:');
-    console.log(error);
+    console.log(mathObject);
+    if (mathObject && mathObject.output && mathObject.output.errors) {
+	locals={
+	    'errors': mathObject.output.errors,
+	    'expr': mathObject.input
+	}
+	var errResult = Jade.renderFile('./views/slack-error-response.jade', locals);
+	res.json({
+	    'text': errResult
+	});
+    }
     res.end(); // Empty 200 response.
   };
   typesetPromise.then(promiseSuccess, promiseError);
@@ -60,10 +72,16 @@ router.post('/slashtypeset', function(req, res) {
     res.send(htmlResult);
     res.end();
   };
-  var promiseError = function(error) {
+  var promiseError = function(mathObject) {
     console.log('Error in typesetting:');
-    console.log(error);
-    res.end(); // Empty 200 response.
+    console.log(mathObject);
+    if (mathObject && mathObject.output && mathObject.output.errors) {
+	var locals = {'errors': mathObject.output.errors,
+		      'expr': mathObject.input};
+	    var htmlResult = Jade.renderFile('./views/slack-slash-error-response.jade', locals);
+	    res.send(htmlResult);
+    }
+    res.end();
   };
   typesetPromise.then(promiseSuccess, promiseError);
 });

@@ -1,3 +1,4 @@
+var config = require('./config.js');
 var MathJax = require('MathJax-node/lib/mj-single.js');
 var _ = require('underscore');
 var Q = require('q');
@@ -10,13 +11,23 @@ MathJax.start();
 
 // Application logic for typesetting.
 var extractRawMath = function(text, prefix) {
-  var mathRegex = new RegExp("^\s*" + prefix + "\s*((?:\n|.)*)$","g");
+  var mathRegex = new RegExp(
+      "^\\s*" + prefix + 
+        "(?:\\s*(\\$\\$|\\$|`))?" +
+        "(?:\\s*((?:\n|.)*))",
+      "g");
   var results = [];
   var match;
   while (match = mathRegex.exec(text)) {
+    if (match[1] == '`') fmt='AsciiMath';
+    else if (match[1] == '$$') fmt='TeX';
+    else if (match[1] == '$') fmt='inline-TeX';
+    else fmt=config.defaultFormat || "AsciiMath";
+    console.log("Using format "+fmt);
     results.push({ // mathObject
       matchedText: match[0],
-      input: match[1],
+      format: fmt,
+      input: match[2],
       output: null,
       error: null,
     });
@@ -27,12 +38,12 @@ var extractRawMath = function(text, prefix) {
 var renderMath = function(mathObject, parseOptions) {
   var defaultOptions = {
     math: mathObject.input,
-    format: 'AsciiMath',
+    format: mathObject.format,
     png: true,
-    dpi: 600,
+    dpi: config.mj_dpi || 600,
     font: 'TeX',
-    ex: 12,
-    width: 600,
+    ex: config.mj_ex || 12,
+    width: config.mj_width || 600,
     linebreaks: true,
   };
   var typesetOptions = _.extend(defaultOptions, parseOptions);
@@ -44,7 +55,7 @@ var renderMath = function(mathObject, parseOptions) {
       deferred.reject(mathObject);
       return;
     }
-    var filename = md5(mathObject.input) + '.png';
+    var filename = md5(mathObject.input + mathObject.format) + '.png';
     var filepath = 'static/' + filename;
     if (!fs.existsSync(filepath)) {
       console.log('writing new PNG: %s', filename);
@@ -66,8 +77,8 @@ var renderMath = function(mathObject, parseOptions) {
   return deferred.promise;
 }
 
-var typeset = function(text, prefixed) {
-  var rawMathArray = extractRawMath(entities.decode(text), prefixed);
+var typeset = function(text, prefix) {
+  var rawMathArray = extractRawMath(entities.decode(text), prefix);
   if (rawMathArray.length === 0) {
     return null;
   }

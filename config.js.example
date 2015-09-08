@@ -1,9 +1,18 @@
 var authToken = "FIXME"; // from Slack API integration setup
 var server;
 var port;
+var defaultFormat = "AsciiMath"; // other choices are "TeX" and "inline-TeX"
+// MathJax config settings
+var mj_dpi = 600; // DPI for image
+var mj_ex = 12; // ex size in pixels
+var mj_width = 600; // width of container in ex
 
 module.exports = {
   authToken: authToken,
   server: server,
   port: port,
+  defaultFormat: defaultFormat,
+  mj_dpi:   mj_dpi,
+  mj_ex:    mj_ex,
+  mj_width: mj_width
 };

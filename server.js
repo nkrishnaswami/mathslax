@@ -5,8 +5,8 @@ var Typeset = require('./typeset.js');
 var util = require('util');
 var config = require('./config.js');
 
-var SERVER = process.env.SERVER || '127.0.0.1';
-var PORT = process.env.PORT || '8080';
+var SERVER = process.env.SERVER || config.server || '127.0.0.1';
+var PORT = process.env.PORT || config.port || '8080';
 
 // Install the routes.
 var router = Express.Router();

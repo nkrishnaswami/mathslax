@@ -1,5 +1,9 @@
 var authToken = "FIXME"; // from Slack API integration setup
+var server;
+var port;
 
 module.exports = {
   authToken: authToken,
+  server: server,
+  port: port,
 };

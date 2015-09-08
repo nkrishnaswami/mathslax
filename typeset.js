@@ -2,12 +2,15 @@ var MathJax = require('MathJax-node/lib/mj-single.js');
 var _ = require('underscore');
 var Q = require('q');
 var fs = require('fs');
+var md5 = require('md5');
+var Entities = require('html-entities').XmlEntities;
+entities = new Entities();
 
 MathJax.start();
 
 // Application logic for typesetting.
 var extractRawMath = function(text, prefix) {
-  var mathRegex = new RegExp("^\s*" + prefix + "\s*(.*)$","g");
+  var mathRegex = new RegExp("^\s*" + prefix + "\s*((?:\n|.)*)$","g");
   var results = [];
   var match;
   while (match = mathRegex.exec(text)) {
@@ -41,7 +44,7 @@ var renderMath = function(mathObject, parseOptions) {
       deferred.reject(mathObject);
       return;
     }
-    var filename = encodeURIComponent(mathObject.input).replace(/\%/g, 'pc') + '.png';
+    var filename = md5(mathObject.input) + '.png';
     var filepath = 'static/' + filename;
     if (!fs.existsSync(filepath)) {
       console.log('writing new PNG: %s', filename);
@@ -64,7 +67,7 @@ var renderMath = function(mathObject, parseOptions) {
 }
 
 var typeset = function(text, prefixed) {
-  var rawMathArray = extractRawMath(text, prefixed);
+  var rawMathArray = extractRawMath(entities.decode(text), prefixed);
   if (rawMathArray.length === 0) {
     return null;
   }

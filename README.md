@@ -19,6 +19,8 @@ $ make install
 $ SERVER=myhostname.com PORT=9999 node server.js
 ```
 
+If you prefer, you can also set the server and port in `config.js`
+
 Set up an outgoing web hook in Slack pointing to `myhostname.com:9999/typeset`
 (don't forget the `/typeset`). Use `math!` as the prefix.
 

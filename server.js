@@ -1,69 +1,92 @@
+require('es6-object-assign').polyfill();
+
 var Express = require('express');
+var Fs = require('fs');
 var BodyParser = require('body-parser');
 var Jade = require('jade');
 var Typeset = require('./typeset.js');
 var util = require('util');
 var config = require('./config.js');
 
+var http = require('http');
+
+var SCHEME = process.env.SCHEME || config.scheme || 'http';
 var SERVER = process.env.SERVER || config.server || '127.0.0.1';
 var PORT = process.env.PORT || config.port || '8080';
+var KEY = process.env.KEY   || config.key;
+var CERT = process.env.CERT || config.cert;
+var LocalUrl;
+if ((SCHEME === 'http' && PORT == '80') ||
+    (SCHEME === 'https' && PORT == '443')) {
+  LocalUrl = util.format('%s://%s/', SCHEME, SERVER);
+} else {
+  LocalUrl = util.format('%s://%s:%s/', SCHEME, SERVER, PORT);
+}
+var BASE_URL = process.env.BASE_URL || config.base_url || LocalUrl;
+if (!BASE_URL.endsWith('/')) {
+  BASE_URL += '/';
+}
 
 // Install the routes.
 var router = Express.Router();
-router.get('/', function(req, res) {
-  res.json(['Hello', 'World', {underDevelopment: true}]);
-});
-router.post('/typeset', function(req, res) {
-  var cd = new Date();
-  var requestString = req.body.text;
-  var bpr = 'math\\!';
-  console.log(cd + ":" + requestString);
-  console.log( " going to send "+bpr );
-  var authToken = req.body.token;
-  if (authToken != config.authToken) {
+router.all('/typeset', function(req, res) {
+  var params = Object.assign(req.query, req.body)
+console.log(params);
+  // check auth
+  console.log(cd + ": " + requestString);
+  if (!params.token || config.authTokens[params.team_domain] != params.token) {
+    console.log("Unauthorized token", params.token, "for team domain", params.team_domain);
     res.status(401).send();
     return;
   };
+
+  var cd = new Date();
+  console.log(req.body);
+  var requestString = params.text;
+  if (requestString === "" || requestString == null) {
+    console.log('No math to typeset');
+    res.json({'text': "No math to typeset",
+              'username': params.user_name,
+              'response_type': 'ephemeral',
+    });
+    res.end(); // Empty 200 response -- no text was found to typeset.
+    return;
+  }
+  var bpr = params.trigger_word || "";
   var typesetPromise = Typeset.typeset(requestString,bpr);
   if (typesetPromise === null) {
-    res.send('no text found to typeset');
+    console.log('No math to typeset');
+    res.json({'text': "No math to typeset",
+              'username': params.user_name,
+              'response_type': 'ephemeral',
+    });
     res.end(); // Empty 200 response -- no text was found to typeset.
     return;
   }
   var promiseSuccess = function(mathObjects) {
+    console.log('rendered: ', mathObjects[0].input);
     var locals = {'mathObjects': mathObjects,
-                  'serverAddress': util.format('http://%s:%s/', SERVER, PORT)};
+                  'serverAddress': BASE_URL};
     var htmlResult = Jade.renderFile('./views/slack-response.jade', locals);
-    res.json({'text' : htmlResult});
+    res.json({
+              'username': params.user_name,
+              'text': htmlResult,
+	      'response_type': 'in_channel'
+              //'attachments': [ {
+              //     'fallback': requestString,
+              //     'image_url': htmlResult
+              //   } ]
+    });
     res.end();
   };
   var promiseError = function(error) {
-    console.log('Error in typesetting:');
-    console.log(error);
-    res.end(); // Empty 200 response.
-  };
-  typesetPromise.then(promiseSuccess, promiseError);
-});
-router.post('/slashtypeset', function(req, res) {
-  var cd = new Date();
-  var requestString = req.body.text;
-  var typesetPromise = Typeset.typeset(requestString,'');
-  if (typesetPromise === null) {
-    res.send('no text found to typeset');
-    res.end(); // Empty 200 response -- no text was found to typeset.
-    return;
-  }
-  var promiseSuccess = function(mathObjects) {
-    var locals = {'mathObjects': mathObjects,
-                  'serverAddress': util.format('http://%s:%s/', SERVER, PORT)};
-    var htmlResult = Jade.renderFile('./views/slack-slash-response.jade', locals);
-    res.send(htmlResult);
+    var errs=(error.output.errors || error.error).join("\n");
+    console.log("Errors:", errs);
+    res.json({'text': errs,
+              'username': params.user_name,
+              'response_type': 'ephemeral',
+    });
     res.end();
-  };
-  var promiseError = function(error) {
-    console.log('Error in typesetting:');
-    console.log(error);
-    res.end(); // Empty 200 response.
   };
   typesetPromise.then(promiseSuccess, promiseError);
 });
@@ -76,11 +99,22 @@ app.use(BodyParser.json());
 app.use('/static', Express.static('static'));
 app.use('/', router);
 
-app.listen(PORT);
+if (SCHEME == 'http') {
+  http.createServer(app).listen(PORT);
+} else if (SCHEME == 'https') {
+  var sslOpts = {
+    key: Fs.readFileSync(KEY),
+    cert: Fs.readFileSync(CERT),
+
+  };
+  https.createServer(sslOpts, app).listen(PORT);
+}
+
 console.log("Mathslax is listening at http://%s:%s/", SERVER, PORT);
 console.log("Make a test request with something like:");
-console.log("curl -v -X POST '%s:%d/typeset' --data " +
+console.log("curl -v -X POST '" + BASE_URL + "typeset' --data " +
             "'{\"text\": \"math! f(x) = x^2/sin(x) * E_0\", " +
-              "\"token\": \"" + config.authToken + "\"}' " +
-            "-H \"Content-Type: application/json\"", SERVER, PORT);
+              "\"team_domain\": \"test\"}' " +
+              "\"token\": \"test\"}' " +
+            "-H \"Content-Type: application/json\"");
 console.log('___________\n');

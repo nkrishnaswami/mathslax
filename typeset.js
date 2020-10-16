@@ -15,7 +15,6 @@ var extractRawMath = function(text, prefix) {
   var match;
   while (match = mathRegex.exec(text)) {
     results.push({ // mathObject
-      matchedText: match[0],
       input: match[1],
       output: null,
       error: null,
@@ -24,20 +23,20 @@ var extractRawMath = function(text, prefix) {
   return results;
 };
 
-var renderMath = function(mathObject, parseOptions) {
-  var defaultOptions = {
+var renderMath = function(mathObject) {
+  var typesetOptions = {
     math: mathObject.input,
-    format: 'AsciiMath',
+    format: 'TeX',
     png: true,
-    dpi: 600,
+    dpi: 200,
     font: 'TeX',
-    ex: 12,
-    width: 600,
-    linebreaks: true,
+    ex: 4,
+    width: 800,
+    linebreaks: false,
   };
-  var typesetOptions = _.extend(defaultOptions, parseOptions);
   var deferred = Q.defer();
   var typesetCallback = function(result) {
+    console.log("Rendered "+ mathObject.input);
     if (!result || !result.png || !!result.errors) {
       mathObject.error = new Error('Invalid response from MathJax.');
       mathObject.output = result;
@@ -66,8 +65,8 @@ var renderMath = function(mathObject, parseOptions) {
   return deferred.promise;
 }
 
-var typeset = function(text, prefixed) {
-  var rawMathArray = extractRawMath(entities.decode(text), prefixed);
+var typeset = function(text, prefix) {
+  var rawMathArray = extractRawMath(entities.decode(text), prefix);
   if (rawMathArray.length === 0) {
     return null;
   }

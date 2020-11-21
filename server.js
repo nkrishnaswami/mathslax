@@ -1,99 +1,92 @@
-require('es6-object-assign').polyfill();
+const Express = require('express');
+const Fs = require('fs');
+const BodyParser = require('body-parser');
+const Typeset = require('./typeset.js');
+const util = require('util');
+const config = require('./config.js');
 
-var Express = require('express');
-var Fs = require('fs');
-var BodyParser = require('body-parser');
-var Jade = require('jade');
-var Typeset = require('./typeset.js');
-var util = require('util');
-var config = require('./config.js');
+const http = require('http');
 
-var http = require('http');
+const SCHEME = process.env.SCHEME || config.scheme || 'http';
+const SERVER = process.env.SERVER || config.server || '127.0.0.1';
+const PORT = process.env.PORT || config.port || '8080';
+const KEY = process.env.KEY   || config.key;
+const CERT = process.env.CERT || config.cert;
 
-var SCHEME = process.env.SCHEME || config.scheme || 'http';
-var SERVER = process.env.SERVER || config.server || '127.0.0.1';
-var PORT = process.env.PORT || config.port || '8080';
-var KEY = process.env.KEY   || config.key;
-var CERT = process.env.CERT || config.cert;
-var LocalUrl;
-if ((SCHEME === 'http' && PORT == '80') ||
-    (SCHEME === 'https' && PORT == '443')) {
-  LocalUrl = util.format('%s://%s/', SCHEME, SERVER);
-} else {
-  LocalUrl = util.format('%s://%s:%s/', SCHEME, SERVER, PORT);
+const makeLocalUrl = function(scheme, server, port) {
+  if ((scheme === 'http' && port == '80') ||
+      (scheme === 'https' && port == '443')) {
+    return `${scheme}://${server}/`;
+  } else {
+    return `${scheme}://${server}:${port}/`;
+  }
 }
-var BASE_URL = process.env.BASE_URL || config.base_url || LocalUrl;
-if (!BASE_URL.endsWith('/')) {
-  BASE_URL += '/';
+const LocalUrl = makeLocalUrl(SCHEME, SERVER, PORT);
+
+const ensureTrailingSlash = function(url) {
+  if (!url.endsWith('/')) {
+    url += '/';
+  }
+  return url;
+}
+const BASE_URL = ensureTrailingSlash(process.env.BASE_URL || config.base_url || LocalUrl);
+
+const MakeResultUrls = function(mathObjects) {
+  const urls = mathObjects.map((mathObject) => `${BASE_URL}${mathObject.output}`);
+  return urls.join(' ');
 }
 
 // Install the routes.
-var router = Express.Router();
-router.all('/typeset', function(req, res) {
-  var params = Object.assign(req.query, req.body)
-console.log(params);
+const router = Express.Router();
+router.all('/typeset', async function(req, res) {
+  const params = Object.assign(req.query, req.body)
+  const currentDate = new Date();
+  console.log(params);
+  const requestString = params.text;
+  console.log(currentDate + ": " + requestString);
   // check auth
-  console.log(cd + ": " + requestString);
   if (!params.token || config.authTokens[params.team_domain] != params.token) {
     console.log("Unauthorized token", params.token, "for team domain", params.team_domain);
     res.status(401).send();
     return;
   };
 
-  var cd = new Date();
   console.log(req.body);
-  var requestString = params.text;
   if (requestString === "" || requestString == null) {
     console.log('No math to typeset');
     res.json({'text': "No math to typeset",
               'username': params.user_name,
               'response_type': 'ephemeral',
-    });
+	     });
     res.end(); // Empty 200 response -- no text was found to typeset.
     return;
   }
-  var bpr = params.trigger_word || "";
-  var typesetPromise = Typeset.typeset(requestString,bpr);
-  if (typesetPromise === null) {
-    console.log('No math to typeset');
-    res.json({'text': "No math to typeset",
-              'username': params.user_name,
-              'response_type': 'ephemeral',
-    });
-    res.end(); // Empty 200 response -- no text was found to typeset.
-    return;
-  }
-  var promiseSuccess = function(mathObjects) {
+  const bpr = params.trigger_word || "";
+  try {
+    const mathObjects = await Typeset.typeset(requestString, bpr);
     console.log('rendered: ', mathObjects[0].input);
-    var locals = {'mathObjects': mathObjects,
-                  'serverAddress': BASE_URL};
-    var htmlResult = Jade.renderFile('./views/slack-response.jade', locals);
     res.json({
-              'username': params.user_name,
-              'text': htmlResult,
-	      'response_type': 'in_channel'
-              //'attachments': [ {
-              //     'fallback': requestString,
-              //     'image_url': htmlResult
-              //   } ]
+      'username': params.user_name,
+      'text': MakeResultUrls(mathObjects),
+      'response_type': 'in_channel'
+      //'attachments': [ {
+      //     'fallback': requestString,
+      //     'image_url': htmlResult
+      //   } ]
     });
-    res.end();
-  };
-  var promiseError = function(error) {
-    var errs=(error.output.errors || error.error).join("\n");
-    console.log("Errors:", errs);
-    res.json({'text': errs,
+  } catch(error) {
+    console.log("Errors:", error);
+    res.json({'text': `${error}`,
               'username': params.user_name,
               'response_type': 'ephemeral',
-    });
-    res.end();
-  };
-  typesetPromise.then(promiseSuccess, promiseError);
+	     });
+  }
+  res.end();
 });
 
 
 // Start the server.
-var app = Express();
+const app = Express();
 app.use(BodyParser.urlencoded({extended: true}));
 app.use(BodyParser.json());
 app.use('/static', Express.static('static'));
@@ -102,7 +95,7 @@ app.use('/', router);
 if (SCHEME == 'http') {
   http.createServer(app).listen(PORT);
 } else if (SCHEME == 'https') {
-  var sslOpts = {
+  const sslOpts = {
     key: Fs.readFileSync(KEY),
     cert: Fs.readFileSync(CERT),
 
@@ -112,9 +105,9 @@ if (SCHEME == 'http') {
 
 console.log("Mathslax is listening at http://%s:%s/", SERVER, PORT);
 console.log("Make a test request with something like:");
-console.log("curl -v -X POST '" + BASE_URL + "typeset' --data " +
-            "'{\"text\": \"math! f(x) = x^2/sin(x) * E_0\", " +
-              "\"team_domain\": \"test\"}' " +
-              "\"token\": \"test\"}' " +
+console.log("curl -v '" + BASE_URL + "typeset' --data " +
+            "'{\"text\": \"f(x) = x^2/sin(x) * E_0\", " +
+            "\"team_domain\": \"test\"}' " +
+            "\"token\": \"test\"}' " +
             "-H \"Content-Type: application/json\"");
 console.log('___________\n');

@@ -1,5 +1,6 @@
 module.exports = {
   authTokens: {
+    test: "test", // for testing
     team_domain_1: "myAuthToken1",
     team_domain_2: "myAuthToken2",
   },

@@ -7,18 +7,28 @@ const Svg2Img = require('svg2img')
 const Entities = require('html-entities').XmlEntities;
 entities = new Entities();
 
-const mathjax = require('mathjax-full');
-const MathJaxPromise = Util.promisify(mathjax.init)({
-  options: { },
-  loader: { load: [
-    'core', 'adaptors/liteDOM', 'input/tex-base', '[tex]/all-packages',
-    'output/svg', 'output/svg/fonts/tex'
-  ]},
-  tex: { packages: ['base', 'autoload', 'require', 'ams', 'newcommand'] },
-  svg: { fontCache: 'local' },
-  startup: { typeset: false }
-});
-
+MathJax = {
+  options: {
+  },
+  loader: {
+    paths: ['mathjax-full/es5'],
+    source: require('mathjax-full/components/src/source.js').source,
+    require: require,
+    load: [
+      'adaptors/liteDOM'
+    ]
+  },
+  tex: {
+    packages: ['base', 'autoload', 'require', 'ams', 'newcommand']
+  },
+  svg: {
+    fontCache: 'local'
+  },
+  startup: {
+    typeset: false
+  }
+};
+require('mathjax-full/es5/tex-svg.js');
 
 // Application logic for typesetting.
 const extractRawMath = function(text, prefix) {
@@ -32,39 +42,58 @@ const extractRawMath = function(text, prefix) {
       error: null,
     });
   }
+  console.log(`${new Date()}: DEBUG: extractRawMath("${text}", "${prefix}"):`, results);
   return results;
 };
 
-const renderMathObject = async function(mathObject) {
+const renderMathObject = async function(mathObject, filepath) {
+  const state = {};
+  var status = 'Initializing MathJax';
   try {
-    const MathJax = await MathJaxPromise;
-    const adaptor = MathJax.startup.adaptor;
-    const svgNode = await MathJax.tex2svg(mathObject.input, {
+    console.log(`${new Date()}: ${status}: ...`);
+    await MathJax.startup.promise;
+    console.log(`${new Date()}: ${status}: complete`);
+  } catch(error) {
+    console.log(`${new Date()}: ${status}: failed:`, error);
+    throw error;
+  }
+
+  status = 'Rendering SVG';
+  try {
+    console.log(`${new Date()}: ${status}: ${mathObject.input}`);
+    state.svgNode = await MathJax.tex2svgPromise(mathObject.input, {
       display: true,
       ex: 4,
-      containerWidth: 800,
     });
+    console.log(`${new Date()}: ${status}: complete`);
   } catch(error) {
-    console.log("Failed to render", mathObject.input, "to SVG:", error);
+    console.log(`${new Date()}: ${status} from ${mathObject.input}: failed:`, error);
     throw error;
   }
-  console.log("Rendered", mathObject.input, "to SVG");
+
+  status = 'Rendering PNG';
   try {
-    const pngBuffer = await Util.promisify(Svg2Img)(svgNode.OuterHTML, {
-      format: 'png'
-    });
+    console.log(`${new Date()}: ${status}: ${mathObject.input}`);
+    state.pngBuffer = await Util.promisify(Svg2Img)(
+      MathJax.startup.adaptor.outerHTML(state.svgNode), {
+	format: 'png'
+      });
+    console.log(`${new Date()}: ${status}: complete`);
   } catch(error) {
-    console.log("Failed to render", mathObject.input, "to PNG:", error);
+    console.log(`${new Date()}: ${status} from ${mathObject.input}: failed:`, error);
     throw error;
   }
-  console.log('Rendered to PNG');
+
+  status = 'Saving file';
   try {
-    await fs.writeFile(filepath, pngBuffer);
+    console.log(`${new Date()}: ${status}: ${filepath}`);
+    await fs.writeFile(filepath, state.pngBuffer);
+    console.log(`${new Date()}: ${status}: complete`);
   } catch(error) {
-    console.log("Failed to save PNG of", mathObject.input, "to file:", error);
+    console.log(`${new Date()}: ${status} to ${filepath}: failed:`, error);
     throw error;
   }
-  console.log('Wrote to: %s', filename);
+  console.log(`${new Date()}: Wrote '${filepath}'`);
 
   mathObject.output = filepath;
   return mathObject;
@@ -82,14 +111,17 @@ const renderMathObjectCached = async function(mathObject) {
     }
     return false;
   };
+  console.log(`${new Date()}: DEBUG: renderMathObjectCached: Checking if "${filepath}" exists`);
   if (await exists(filepath)) {
-    console.log('using existing PNG: %s', filename);
+    console.log(`${new Date()}: Using existing PNG: '${filename}'`);
     mathObject.output = filepath;
     return mathObject;
   }
   try {
+    console.log(`${new Date()}: DEBUG: renderMathObjectCached: Rendering "${mathObject.input}"`);
     return await renderMathObject(mathObject, filepath);
   } catch(error) {
+    console.log(`${new Date()}: DEBUG: renderMathObjectCached: Failed:`, error);
     mathObject.error = error;
     mathObject.output = null;
     throw mathObject;
@@ -98,9 +130,11 @@ const renderMathObjectCached = async function(mathObject) {
 
 const typeset = async function(text, prefix) {
   const rawMathArray = extractRawMath(entities.decode(text), prefix);
+  console.log(`${new Date()}: DEBUG: typeset: Found ${rawMathArray.length} inputs`);
   if (rawMathArray.length === 0) {
     throw new Error('No math to typeset');
   }
+  console.log(`${new Date()}: DEBUG: typeset: Awaiting rendering`);
   return await Promise.all(_.map(rawMathArray, renderMathObjectCached));
 };
 

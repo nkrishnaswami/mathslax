@@ -39,32 +39,34 @@ const MakeResultUrls = function(mathObjects) {
 // Install the routes.
 const router = Express.Router();
 router.all('/typeset', async function(req, res) {
+  console.time('typeset');
   const params = Object.assign(req.query, req.body)
-  const currentDate = new Date();
-  console.log(params);
+  console.log(`${new Date()}: /typeset params:`, params);
   const requestString = params.text;
-  console.log(currentDate + ": " + requestString);
   // check auth
   if (!params.token || config.authTokens[params.team_domain] != params.token) {
-    console.log("Unauthorized token", params.token, "for team domain", params.team_domain);
+    console.warn(`${new Date()}: Unauthorized token "${params.token}" ` +
+		 `for team domain "${params.team_domain}"`);
     res.status(401).send();
+    console.timeEnd('typeset');
     return;
   };
 
-  console.log(req.body);
-  if (requestString === "" || requestString == null) {
-    console.log('No math to typeset');
-    res.json({'text': "No math to typeset",
+  console.log(`${new Date()}: Processing: ${req.body}`);
+  if (requestString === '' || requestString == null) {
+    console.log(`${new Date()}: No math to typeset`);
+    res.json({'text': 'No math to typeset',
               'username': params.user_name,
               'response_type': 'ephemeral',
 	     });
     res.end(); // Empty 200 response -- no text was found to typeset.
+    console.timeEnd('typeset');
     return;
   }
-  const bpr = params.trigger_word || "";
+  const bpr = params.trigger_word || '';
   try {
     const mathObjects = await Typeset.typeset(requestString, bpr);
-    console.log('rendered: ', mathObjects[0].input);
+    console.log(`${new Date()}: Rendered: ${mathObjects[0].input}`);
     res.json({
       'username': params.user_name,
       'text': MakeResultUrls(mathObjects),
@@ -75,13 +77,14 @@ router.all('/typeset', async function(req, res) {
       //   } ]
     });
   } catch(error) {
-    console.log("Errors:", error);
+    console.log(`${new Date()}: Errors:`, error);
     res.json({'text': `${error}`,
               'username': params.user_name,
               'response_type': 'ephemeral',
 	     });
   }
   res.end();
+  console.timeEnd('typeset');
 });
 
 

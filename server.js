@@ -41,7 +41,7 @@ const router = Express.Router();
 router.all('/typeset', async function(req, res) {
   console.time('typeset');
   const params = Object.assign(req.query, req.body)
-  console.log(`${new Date()}: /typeset params:`, params);
+  console.log(`${new Date()}: /typeset: params:`, params);
   const requestString = params.text;
   // check auth
   if (!params.token || config.authTokens[params.team_domain] != params.token) {
@@ -52,9 +52,9 @@ router.all('/typeset', async function(req, res) {
     return;
   };
 
-  console.log(`${new Date()}: Processing: ${req.body}`);
+  console.log(`${new Date()}: /typeset: Processing: ${req.body}`);
   if (requestString === '' || requestString == null) {
-    console.log(`${new Date()}: No math to typeset`);
+    console.log(`${new Date()}: /typeset: No math to typeset`);
     res.json({'text': 'No math to typeset',
               'username': params.user_name,
               'response_type': 'ephemeral',
@@ -66,7 +66,7 @@ router.all('/typeset', async function(req, res) {
   const bpr = params.trigger_word || '';
   try {
     const mathObjects = await Typeset.typeset(requestString, bpr);
-    console.log(`${new Date()}: Rendered: ${mathObjects[0].input}`);
+    console.log(`${new Date()}: /typeset: Rendered: ${mathObjects[0].input}`);
     res.json({
       'username': params.user_name,
       'text': MakeResultUrls(mathObjects),
@@ -77,8 +77,8 @@ router.all('/typeset', async function(req, res) {
       //   } ]
     });
   } catch(error) {
-    console.log(`${new Date()}: Errors:`, error);
-    res.json({'text': `${error}`,
+    console.log(`${new Date()}: /typeset: Errors:`, error);
+    res.json({'text': error.error.toString(),
               'username': params.user_name,
               'response_type': 'ephemeral',
 	     });

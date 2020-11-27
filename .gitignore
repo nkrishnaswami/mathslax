@@ -1,6 +1,7 @@
 node_modules/
 config.js
 static/*.png
+static/*.svg
 *~
 package-lock.json
 *.log

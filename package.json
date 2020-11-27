@@ -9,7 +9,7 @@
     "mathjax-full": "^3.1.2",
     "md5": ">= 2.3.0",
     "nodemon": "^2.0.6",
-    "svg2img": "^0.9.0",
+    "puppeteer": "^5.5.0",
     "underscore": "^1.11.0",
     "webpack": "^5.6.0"
   },

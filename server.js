@@ -1,11 +1,11 @@
-const Express = require('express');
-const Fs = require('fs');
-const BodyParser = require('body-parser');
-const Typeset = require('./typeset.js');
-const util = require('util');
-const config = require('./config.js');
+import Express from 'express';
+import Fs from 'fs';
+import BodyParser from 'body-parser';
+import util from 'util';
+import http from 'http';
 
-const http = require('http');
+import typeset from './typeset.js';
+import config from './config.js';
 
 const SCHEME = process.env.SCHEME || config.scheme || 'http';
 const SERVER = process.env.SERVER || config.server || '127.0.0.1';
@@ -65,7 +65,7 @@ router.all('/typeset', async function(req, res) {
   }
   const bpr = params.trigger_word || '';
   try {
-    const mathObjects = await Typeset.typeset(requestString, bpr);
+    const mathObjects = await typeset(requestString, bpr);
     console.log(`${new Date()}: /typeset: Rendered: ${mathObjects[0].input}`);
     res.json({
       'username': params.user_name,
@@ -110,7 +110,7 @@ console.log("Mathslax is listening at http://%s:%s/", SERVER, PORT);
 console.log("Make a test request with something like:");
 console.log("curl -v '" + BASE_URL + "typeset' --data " +
             "'{\"text\": \"f(x) = x^2/sin(x) * E_0\", " +
-            "\"team_domain\": \"test\"}' " +
-            "\"token\": \"test\"}' " +
+            "\"team_domain\": \"domain\", " +
+            "\"token\": \"domain_token\"}' " +
             "-H \"Content-Type: application/json\"");
 console.log('___________\n');

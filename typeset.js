@@ -1,38 +1,21 @@
 // Initialize MathJax
-const Util = require('util');
-const _ = require('underscore');
-const fs = require('fs').promises;
-const md5 = require('md5');
-const process = require('process');
-const puppeteer = require('puppeteer')
-const Entities = require('html-entities').XmlEntities;
-entities = new Entities();
+import Util from 'util';
+import _ from 'underscore';
+import fs from 'node:fs/promises';
+import md5 from 'md5';
+import process from 'process';
+import puppeteer from 'puppeteer';
+import { XmlEntities as Entities } from 'html-entities';
+const entities = new Entities();
 var browser;
 
-
-MathJax = {
-  options: {
-    enableAssistiveMml: false,
-  },
-  loader: {
-    paths: ['mathjax-full/es5'],
-    source: require('mathjax-full/components/src/source.js').source,
-    require: require,
-    load: [
-      'adaptors/liteDOM'
-    ]
-  },
-  tex: {
-    packages: ['base', 'autoload', 'require', 'ams', 'newcommand']
-  },
-  svg: {
-    fontCache: 'local'
-  },
-  startup: {
-    typeset: false
-  }
-};
-require('mathjax-full/es5/tex-svg.js');
+import {mathjax} from 'mathjax-full/js/mathjax.js';
+import {TeX} from 'mathjax-full/js/input/tex.js';
+import {SVG} from 'mathjax-full/js/output/svg.js';
+import {liteAdaptor} from 'mathjax-full/js/adaptors/liteAdaptor.js';
+import {RegisterHTMLHandler} from 'mathjax-full/js/handlers/html.js';
+import {AssistiveMmlHandler} from 'mathjax-full/js/a11y/assistive-mml.js';
+import {AllPackages} from 'mathjax-full/js/input/tex/AllPackages.js';
 
 // Application logic for typesetting.
 const extractRawMath = function(text, prefix) {
@@ -53,9 +36,14 @@ const extractRawMath = function(text, prefix) {
 const renderMathObject = async function(mathObject, filepath) {
   const state = {};
   var status = 'Initializing MathJax';
+  var html, adaptor;
   try {
     console.log(`${new Date()}: renderMathObject: ${status}: ...`);
-    await MathJax.startup.promise;
+    adaptor = liteAdaptor();
+    const handler = RegisterHTMLHandler(adaptor);
+    const tex = new TeX({packages: ['base', 'autoload', 'require', 'ams', 'newcommand']});
+    const svg = new SVG({fontCache: 'local'});
+    html = mathjax.document('', {InputJax: tex, OutputJax: svg});
     console.log(`${new Date()}: renderMathObject: ${status}: complete`);
   } catch(error) {
     console.log(`${new Date()}: renderMathObject: ${status}: failed:`, error);
@@ -65,7 +53,7 @@ const renderMathObject = async function(mathObject, filepath) {
   status = 'Rendering SVG';
   try {
     console.log(`${new Date()}: renderMathObject: ${status}: ${mathObject.input}`);
-    state.svgNode = await MathJax.tex2svgPromise(mathObject.input, {
+    state.svgNode = html.convert(mathObject.input, {
       display: true,
       ex: 4,
     });
@@ -80,13 +68,19 @@ const renderMathObject = async function(mathObject, filepath) {
     
     console.log(`${new Date()}: renderMathObject: ${status}: ${mathObject.input}`);
     const svgpath = filepath.replace(/\.png$/, '.svg');
-    await fs.writeFile(svgpath,
-		       MathJax.startup.adaptor.innerHTML(state.svgNode));
+    await fs.writeFile(svgpath, adaptor.innerHTML(state.svgNode));
     if (!browser) {
-      browser = await puppeteer.launch();
+      console.log(`${new Date()}: renderMathObject: launching browser`);
+      browser = await puppeteer.launch({args: ['--disable-gpu',
+					       '--no-sandbox',
+					       '--disable-setuid-sandbox'],
+					dumpio: true});
+      console.log(`${new Date()}: renderMathObject: done`);
     }
+    console.log(`${new Date()}: renderMathObject: opening new page`);
     const page = await browser.newPage();
     const svgurl = `file://${process.cwd()}/${svgpath}`;
+    console.log(`${new Date()}: renderMathObject: navigating to SVG file ${svgurl}`);
     await page.goto(svgurl);
     // Check for errors.
     const errorText = await page.evaluate(async function() {
@@ -98,14 +92,17 @@ const renderMathObject = async function(mathObject, filepath) {
       await page.close();
       throw new Error(`Unable to typeset '${mathObject.input}': ${errorText}`);
     }
+    console.log(`${new Date()}: renderMathObject: getting bounding box`);
     // Otherwise, resize to the SVG dimensions and save the PNG.
     const {width, height} = await page.evaluate(async () => {
       const element = document.querySelector('svg');
       const {width, height} = element.getBoundingClientRect();
       return {width, height};
     });
+    console.log(`${new Date()}: renderMathObject: taking screenshot`);
     await page.screenshot({path: filepath,
 			   clip: {x: 0, y: 0, width, height}});
+    console.log(`${new Date()}: renderMathObject: closing page`);
     await page.close();
     console.log(`${new Date()}: renderMathObject: ${status}: complete`);
   } catch(error) {
@@ -148,7 +145,7 @@ const renderMathObjectCached = async function(mathObject) {
   }
 }
 
-const typeset = async function(text, prefix) {
+export default async function(text, prefix) {
   const rawMathArray = extractRawMath(entities.decode(text), prefix);
   console.log(`${new Date()}: typeset: Found ${rawMathArray.length} inputs`);
   if (rawMathArray.length === 0) {
@@ -156,8 +153,4 @@ const typeset = async function(text, prefix) {
   }
   console.log(`${new Date()}: typeset: Awaiting rendering`);
   return await Promise.all(_.map(rawMathArray, renderMathObjectCached));
-};
-
-module.exports = {
-  typeset: typeset,
 };

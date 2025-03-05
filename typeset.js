@@ -4,7 +4,7 @@ import _ from 'underscore';
 import fs from 'node:fs/promises';
 import md5 from 'md5';
 import process from 'process';
-import puppeteer from 'puppeteer';
+import { chromium } from 'playwright';
 import { XmlEntities as Entities } from 'html-entities';
 const entities = new Entities();
 var browser;
@@ -71,10 +71,11 @@ const renderMathObject = async function(mathObject, filepath) {
     await fs.writeFile(svgpath, adaptor.innerHTML(state.svgNode));
     if (!browser) {
       console.log(`${new Date()}: renderMathObject: launching browser`);
-      browser = await puppeteer.launch({args: ['--disable-gpu',
-					       '--no-sandbox',
-					       '--disable-setuid-sandbox'],
-					dumpio: true});
+	browser = await chromium.launch({
+	    args: ['--disable-gpu',
+		   '--no-sandbox',
+		   '--disable-setuid-sandbox'],
+	    dumpio: true});
       console.log(`${new Date()}: renderMathObject: done`);
     }
     console.log(`${new Date()}: renderMathObject: opening new page`);
